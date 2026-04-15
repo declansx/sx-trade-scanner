@@ -21,10 +21,37 @@ export default function App() {
     setLoading(true);
     setError(null);
 
+    // Safety cap: stop auto-paginating after this many pages to avoid runaway requests
+    const AUTO_PAGE_CAP = 20;
+
     try {
-      const data = await fetchTrades({ bettor: address, ...filters, paginationKey: cursorKey });
-      const rawTrades = data.trades ?? [];
-      const cursor = data.nextKey ?? null;
+      let rawTrades = [];
+      let cursor = cursorKey;
+      let capped = false;
+
+      if (!append) {
+        // Initial search: silently paginate all pages so newest trades are visible after sort
+        let pagesFetched = 0;
+        do {
+          const data = await fetchTrades({ bettor: address, ...filters, paginationKey: cursor });
+          rawTrades = rawTrades.concat(data.trades ?? []);
+          cursor = data.nextKey ?? null;
+          pagesFetched++;
+          if (pagesFetched >= AUTO_PAGE_CAP && cursor) {
+            capped = true;
+            break;
+          }
+        } while (cursor);
+      } else {
+        // Load More: single page only
+        const data = await fetchTrades({ bettor: address, ...filters, paginationKey: cursor });
+        rawTrades = data.trades ?? [];
+        cursor = data.nextKey ?? null;
+      }
+
+      if (capped) {
+        console.warn(`[trade-scanner] Auto-pagination capped at ${AUTO_PAGE_CAP} pages. Narrow the date range to see all trades sorted newest-first.`);
+      }
 
       // Fetch uncached trade markets
       const uniqueHashes = [...new Set(rawTrades.map((t) => t.marketHash))];

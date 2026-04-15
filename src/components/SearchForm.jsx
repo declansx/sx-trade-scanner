@@ -1,11 +1,17 @@
 import { useState } from 'react';
 
+function defaultStartDate() {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return d.toISOString().split('T')[0];
+}
+
 export default function SearchForm({ onSearch, loading }) {
   const [walletAddress, setWalletAddress] = useState('');
   const [settled, setSettled] = useState('all');
-  const [pageSize, setPageSize] = useState(100);
+  const [pageSize, setPageSize] = useState(300);
   const [baseToken, setBaseToken] = useState('');
-  const [startDate, setStartDate] = useState('');
+  const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState('');
   const [maker, setMaker] = useState('all');
   const [tradeStatus, setTradeStatus] = useState('all');
@@ -90,7 +96,9 @@ export default function SearchForm({ onSearch, loading }) {
       {/* Row 2: date range + maker + trade status */}
       <div className="form-row">
         <div className="form-group">
-          <label htmlFor="startDate">Start Date</label>
+          <label htmlFor="startDate">
+            Start Date <span className="label-hint">(default: last 30d)</span>
+          </label>
           <input
             id="startDate"
             type="date"
