@@ -1,9 +1,11 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import SearchForm from './components/SearchForm.jsx';
 import TradesTable from './components/TradesTable.jsx';
+import TradeFilters from './components/TradeFilters.jsx';
 import LoadMoreButton from './components/LoadMoreButton.jsx';
 import { fetchTrades } from './api/fetchTrades.js';
 import { fetchAllMarkets } from './api/fetchMarkets.js';
+import { formatMatchup } from './utils/tradeHelpers.js';
 
 export default function App() {
   const [trades, setTrades] = useState([]);
@@ -12,6 +14,8 @@ export default function App() {
   const [loadingStatus, setLoadingStatus] = useState('');
   const [error, setError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [leagueFilter, setLeagueFilter] = useState('');
+  const [gameFilter, setGameFilter] = useState('');
 
   // Market cache persists across Load More calls without triggering re-renders
   const marketCache = useRef({});
@@ -119,6 +123,8 @@ export default function App() {
     currentSearch.current = { address, filters };
     marketCache.current = {};
     setHasSearched(true);
+    setLeagueFilter('');
+    setGameFilter('');
     loadTrades(address, filters, null, false);
   }
 
@@ -126,6 +132,46 @@ export default function App() {
     const { address, filters } = currentSearch.current;
     loadTrades(address, filters, nextKey, true);
   }
+
+  function handleLeagueChange(val) {
+    setLeagueFilter(val);
+    setGameFilter('');
+  }
+
+  const leagues = useMemo(() => {
+    const set = new Set();
+    trades.forEach((t) => {
+      const label = t.market?.leagueLabel ?? (t.parlayLegs ? 'Parlay' : null);
+      if (label) set.add(label);
+    });
+    return [...set].sort();
+  }, [trades]);
+
+  const games = useMemo(() => {
+    const set = new Set();
+    trades.forEach((t) => {
+      if (t.parlayLegs) return;
+      if (leagueFilter && (t.market?.leagueLabel ?? '') !== leagueFilter) return;
+      const matchup = formatMatchup(t.market);
+      if (matchup && matchup !== '—') set.add(matchup);
+    });
+    return [...set].sort();
+  }, [trades, leagueFilter]);
+
+  const visibleTrades = useMemo(() => {
+    if (!leagueFilter && !gameFilter) return trades;
+    return trades.filter((t) => {
+      if (leagueFilter) {
+        const league = t.market?.leagueLabel ?? (t.parlayLegs ? 'Parlay' : '');
+        if (league !== leagueFilter) return false;
+      }
+      if (gameFilter) {
+        if (t.parlayLegs) return false;
+        if (formatMatchup(t.market) !== gameFilter) return false;
+      }
+      return true;
+    });
+  }, [trades, leagueFilter, gameFilter]);
 
   return (
     <div className="app">
@@ -151,7 +197,16 @@ export default function App() {
           <div className="empty-state">No trades found for this address.</div>
         )}
 
-        <TradesTable trades={trades} />
+        <TradeFilters
+          leagues={leagues}
+          games={games}
+          league={leagueFilter}
+          game={gameFilter}
+          onLeagueChange={handleLeagueChange}
+          onGameChange={setGameFilter}
+        />
+
+        <TradesTable trades={visibleTrades} />
 
         <LoadMoreButton
           onLoadMore={handleLoadMore}
