@@ -9,6 +9,7 @@ export default function App() {
   const [trades, setTrades] = useState([]);
   const [nextKey, setNextKey] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('');
   const [error, setError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
 
@@ -19,62 +20,28 @@ export default function App() {
 
   const loadTrades = useCallback(async (address, filters, cursorKey, append) => {
     setLoading(true);
+    setLoadingStatus('');
     setError(null);
 
-    // Safety cap: stop auto-paginating after this many pages to avoid runaway requests
     const AUTO_PAGE_CAP = 20;
 
-    try {
-      let rawTrades = [];
-      let cursor = cursorKey;
-      let capped = false;
-
-      if (!append) {
-        // Initial search: silently paginate all pages so newest trades are visible after sort
-        let pagesFetched = 0;
-        do {
-          const data = await fetchTrades({ bettor: address, ...filters, paginationKey: cursor });
-          rawTrades = rawTrades.concat(data.trades ?? []);
-          cursor = data.nextKey ?? null;
-          pagesFetched++;
-          if (pagesFetched >= AUTO_PAGE_CAP && cursor) {
-            capped = true;
-            break;
-          }
-        } while (cursor);
-      } else {
-        // Load More: single page only
-        const data = await fetchTrades({ bettor: address, ...filters, paginationKey: cursor });
-        rawTrades = data.trades ?? [];
-        cursor = data.nextKey ?? null;
-      }
-
-      if (capped) {
-        console.warn(`[trade-scanner] Auto-pagination capped at ${AUTO_PAGE_CAP} pages. Narrow the date range to see all trades sorted newest-first.`);
-      }
-
-      // Fetch uncached trade markets
+    // Enrich a page of raw trades with market data (mutates marketCache, returns joined trades)
+    async function enrichPage(rawTrades) {
       const uniqueHashes = [...new Set(rawTrades.map((t) => t.marketHash))];
       const uncachedHashes = uniqueHashes.filter((h) => !marketCache.current[h]);
 
       if (uncachedHashes.length > 0) {
         const newMarkets = await fetchAllMarkets(uncachedHashes);
-        if (!append) {
-          console.log('[trade-scanner] sample market:', Object.values(newMarkets)[0]);
-        }
         Object.assign(marketCache.current, newMarkets);
       }
 
-      // For parlay markets (sportId 25 or has legs array), fetch each leg's market data
       const parlayLegHashes = [];
       uniqueHashes.forEach((hash) => {
         const market = marketCache.current[hash];
         if (market?.legs?.length) {
           market.legs.forEach((leg) => {
             const legHash = leg.marketHash ?? leg;
-            if (legHash && !marketCache.current[legHash]) {
-              parlayLegHashes.push(legHash);
-            }
+            if (legHash && !marketCache.current[legHash]) parlayLegHashes.push(legHash);
           });
         }
       });
@@ -84,36 +51,67 @@ export default function App() {
         Object.assign(marketCache.current, legMarkets);
       }
 
-      // Join market + resolved parlay legs onto each trade
-      const joined = rawTrades.map((t) => {
+      return rawTrades.map((t) => {
         const market = marketCache.current[t.marketHash] ?? null;
-        let parlayLegs = null;
-        if (market?.legs?.length) {
-          parlayLegs = market.legs.map((leg) => {
-            const legHash = leg.marketHash ?? leg;
-            return {
-              bettingOutcomeOne: leg.bettingOutcomeOne,
-              marketData: marketCache.current[legHash] ?? null,
-            };
-          });
-        }
+        const parlayLegs = market?.legs?.length
+          ? market.legs.map((leg) => {
+              const legHash = leg.marketHash ?? leg;
+              return { bettingOutcomeOne: leg.bettingOutcomeOne, marketData: marketCache.current[legHash] ?? null };
+            })
+          : null;
         return { ...t, market, parlayLegs };
       });
+    }
 
-      // Sort by most recent betTime first
-      const sorted = [...joined].sort((a, b) => b.betTime - a.betTime);
+    try {
+      let cursor = cursorKey;
 
-      setTrades((prev) => {
-        if (append) {
-          return [...prev, ...sorted].sort((a, b) => b.betTime - a.betTime);
+      if (!append) {
+        setTrades([]);
+        setNextKey(null);
+
+        let pagesFetched = 0;
+        let totalLoaded = 0;
+
+        do {
+          const data = await fetchTrades({ bettor: address, ...filters, paginationKey: cursor });
+          const pageTrades = data.trades ?? [];
+          cursor = data.nextKey ?? null;
+          pagesFetched++;
+          totalLoaded += pageTrades.length;
+
+          if (pageTrades.length > 0) {
+            const enriched = await enrichPage(pageTrades);
+            const sorted = enriched.sort((a, b) => b.betTime - a.betTime);
+            setTrades((prev) => [...prev, ...sorted].sort((a, b) => b.betTime - a.betTime));
+          }
+
+          if (cursor) setLoadingStatus(`Loaded ${totalLoaded} trades, fetching more…`);
+
+          if (pagesFetched >= AUTO_PAGE_CAP && cursor) {
+            console.warn(`[trade-scanner] Auto-pagination capped at ${AUTO_PAGE_CAP} pages. Narrow the date range to see all trades sorted newest-first.`);
+            break;
+          }
+        } while (cursor);
+      } else {
+        // Load More: single page only
+        const data = await fetchTrades({ bettor: address, ...filters, paginationKey: cursor });
+        const pageTrades = data.trades ?? [];
+        cursor = data.nextKey ?? null;
+
+        if (pageTrades.length > 0) {
+          const enriched = await enrichPage(pageTrades);
+          const sorted = enriched.sort((a, b) => b.betTime - a.betTime);
+          setTrades((prev) => [...prev, ...sorted].sort((a, b) => b.betTime - a.betTime));
         }
-        return sorted;
-      });
+      }
+
       setNextKey(cursor);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+      setLoadingStatus('');
     }
   }, []);
 
@@ -143,6 +141,10 @@ export default function App() {
           <div className="error-banner">
             <strong>Error:</strong> {error}
           </div>
+        )}
+
+        {loading && loadingStatus && (
+          <div className="loading-status">{loadingStatus}</div>
         )}
 
         {hasSearched && !loading && !error && trades.length === 0 && (

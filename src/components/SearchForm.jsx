@@ -21,11 +21,12 @@ export default function SearchForm({ onSearch, loading }) {
     const addr = walletAddress.trim();
     if (!addr) return;
 
-    // Convert date strings to unix timestamps (seconds)
-    const startTs = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : null;
-    // End date: use end of selected day (23:59:59)
+    // Convert date strings to unix timestamps (seconds), capped at now to avoid future-date rejections
+    const now = Math.floor(Date.now() / 1000);
+    const startTs = startDate ? Math.min(Math.floor(new Date(startDate).getTime() / 1000), now) : null;
+    // End date: use end of selected day in UTC (matching how date-only strings are parsed)
     const endTs = endDate
-      ? Math.floor(new Date(endDate + 'T23:59:59').getTime() / 1000)
+      ? Math.min(Math.floor(new Date(endDate + 'T23:59:59Z').getTime() / 1000), now)
       : null;
 
     onSearch(addr, {

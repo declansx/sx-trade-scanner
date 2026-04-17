@@ -161,6 +161,13 @@ select option { background: var(--bg-3); }
   font-size: 13px;
 }
 
+.loading-status {
+  text-align: center;
+  padding: 8px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .empty-state {
   text-align: center;
   padding: 48px 20px;
