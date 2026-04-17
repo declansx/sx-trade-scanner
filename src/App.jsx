@@ -1,11 +1,15 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
 import SearchForm from './components/SearchForm.jsx';
 import TradesTable from './components/TradesTable.jsx';
-import TradeFilters from './components/TradeFilters.jsx';
 import LoadMoreButton from './components/LoadMoreButton.jsx';
 import { fetchTrades } from './api/fetchTrades.js';
 import { fetchAllMarkets } from './api/fetchMarkets.js';
 import { formatMatchup } from './utils/tradeHelpers.js';
+
+// Consistent league label for both building the dropdown and filtering
+function tradeLeague(t) {
+  return t.market?.leagueLabel ?? (t.parlayLegs?.length ? 'Parlay' : '');
+}
 
 export default function App() {
   const [trades, setTrades] = useState([]);
@@ -140,18 +144,15 @@ export default function App() {
 
   const leagues = useMemo(() => {
     const set = new Set();
-    trades.forEach((t) => {
-      const label = t.market?.leagueLabel ?? (t.parlayLegs ? 'Parlay' : null);
-      if (label) set.add(label);
-    });
+    trades.forEach((t) => { const l = tradeLeague(t); if (l) set.add(l); });
     return [...set].sort();
   }, [trades]);
 
   const games = useMemo(() => {
     const set = new Set();
     trades.forEach((t) => {
-      if (t.parlayLegs) return;
-      if (leagueFilter && (t.market?.leagueLabel ?? '') !== leagueFilter) return;
+      if (t.parlayLegs?.length) return;
+      if (leagueFilter && tradeLeague(t) !== leagueFilter) return;
       const matchup = formatMatchup(t.market);
       if (matchup && matchup !== '—') set.add(matchup);
     });
@@ -161,14 +162,8 @@ export default function App() {
   const visibleTrades = useMemo(() => {
     if (!leagueFilter && !gameFilter) return trades;
     return trades.filter((t) => {
-      if (leagueFilter) {
-        const league = t.market?.leagueLabel ?? (t.parlayLegs ? 'Parlay' : '');
-        if (league !== leagueFilter) return false;
-      }
-      if (gameFilter) {
-        if (t.parlayLegs) return false;
-        if (formatMatchup(t.market) !== gameFilter) return false;
-      }
+      if (leagueFilter && tradeLeague(t) !== leagueFilter) return false;
+      if (gameFilter && formatMatchup(t.market) !== gameFilter) return false;
       return true;
     });
   }, [trades, leagueFilter, gameFilter]);
@@ -181,7 +176,16 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        <SearchForm onSearch={handleSearch} loading={loading} />
+        <SearchForm
+          onSearch={handleSearch}
+          loading={loading}
+          leagues={leagues}
+          games={games}
+          leagueFilter={leagueFilter}
+          gameFilter={gameFilter}
+          onLeagueChange={handleLeagueChange}
+          onGameChange={setGameFilter}
+        />
 
         {error && (
           <div className="error-banner">
@@ -196,15 +200,6 @@ export default function App() {
         {hasSearched && !loading && !error && trades.length === 0 && (
           <div className="empty-state">No trades found for this address.</div>
         )}
-
-        <TradeFilters
-          leagues={leagues}
-          games={games}
-          league={leagueFilter}
-          game={gameFilter}
-          onLeagueChange={handleLeagueChange}
-          onGameChange={setGameFilter}
-        />
 
         <TradesTable trades={visibleTrades} />
 

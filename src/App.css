@@ -161,34 +161,6 @@ select option { background: var(--bg-3); }
   font-size: 13px;
 }
 
-/* ── Client-side Filters ─────────────────────────────────────────── */
-.trade-filters {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.trade-filters__label {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.trade-filters select {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-size: 13px;
-  padding: 5px 10px;
-  cursor: pointer;
-}
-
-.trade-filters select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
 
 .loading-status {
   text-align: center;

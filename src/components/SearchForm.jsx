@@ -6,7 +6,7 @@ function defaultStartDate() {
   return d.toISOString().split('T')[0];
 }
 
-export default function SearchForm({ onSearch, loading }) {
+export default function SearchForm({ onSearch, loading, leagues = [], games = [], leagueFilter = '', gameFilter = '', onLeagueChange, onGameChange }) {
   const [walletAddress, setWalletAddress] = useState('');
   const [settled, setSettled] = useState('all');
   const [pageSize, setPageSize] = useState(300);
@@ -140,6 +140,26 @@ export default function SearchForm({ onSearch, loading }) {
           </select>
         </div>
       </div>
+
+      {/* Row 3: client-side league/game filters — only shown once trades are loaded */}
+      {leagues.length > 0 && (
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="leagueFilter">League <span className="label-hint">(filter)</span></label>
+            <select id="leagueFilter" value={leagueFilter} onChange={(e) => onLeagueChange(e.target.value)}>
+              <option value="">All Leagues</option>
+              {leagues.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="gameFilter">Game <span className="label-hint">(filter)</span></label>
+            <select id="gameFilter" value={gameFilter} onChange={(e) => onGameChange(e.target.value)}>
+              <option value="">All Games</option>
+              {games.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
 
       <button type="submit" className="btn-primary" disabled={loading}>
         {loading ? <span className="spinner" /> : null}
