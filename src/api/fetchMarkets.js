@@ -2,7 +2,7 @@ const BASE = '/api';
 
 async function fetchMarketsBatch(marketHashes) {
   const params = new URLSearchParams();
-  marketHashes.forEach((h) => params.append('marketHashes[]', h));
+  marketHashes.forEach((h) => params.append('marketHashes', h));
   const res = await fetch(`${BASE}/markets/find?${params}`);
   if (!res.ok) throw new Error(`Markets API error: ${res.status} ${res.statusText}`);
   const json = await res.json();

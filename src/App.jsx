@@ -161,11 +161,14 @@ export default function App() {
 
   const visibleTrades = useMemo(() => {
     if (!leagueFilter && !gameFilter) return trades;
-    return trades.filter((t) => {
+    const filtered = trades.filter((t) => {
       if (leagueFilter && tradeLeague(t) !== leagueFilter) return false;
       if (gameFilter && formatMatchup(t.market) !== gameFilter) return false;
       return true;
     });
+    console.log('[filter] leagueFilter:', JSON.stringify(leagueFilter), 'total:', trades.length, 'visible:', filtered.length);
+    filtered.slice(0, 3).forEach((t) => console.log('  sample leagueLabel:', JSON.stringify(t.market?.leagueLabel)));
+    return filtered;
   }, [trades, leagueFilter, gameFilter]);
 
   return (
