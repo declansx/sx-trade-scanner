@@ -8,6 +8,7 @@ export default function TradesTable({ trades }) {
       <table className="trades-table">
         <thead>
           <tr>
+            <th className="th-info"></th>
             <th className="th-role"></th>
             <th>Bet Time</th>
             <th>League</th>

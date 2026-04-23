@@ -392,6 +392,99 @@ select option { background: var(--bg-3); }
 .result-push { color: var(--text-muted); }
 .result-na   { color: var(--text-muted); }
 
+/* ── Info icon column ────────────────────────────────────────────── */
+.th-info { width: 28px; padding-left: 8px !important; padding-right: 2px !important; }
+.td-info  { width: 28px; padding-left: 8px !important; padding-right: 2px !important; }
+
+.info-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.12s;
+}
+
+.info-btn:hover { color: var(--accent-hover); }
+
+.info-btn--leg {
+  font-size: 11px;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.info-btn--leg:hover { opacity: 1; }
+
+/* ── Trade metadata tooltip ──────────────────────────────────────── */
+.trade-meta-tooltip {
+  position: fixed;
+  z-index: 9999;
+  width: 300px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.meta-section {
+  padding: 8px 12px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--accent-hover);
+  border-top: 1px solid var(--border);
+}
+
+.meta-section--first { border-top: none; }
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px;
+}
+
+.meta-row--copyable {
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.meta-row--copyable:hover { background: rgba(99, 102, 241, 0.1); }
+
+.meta-row--empty { opacity: 0.4; cursor: default; }
+
+.meta-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.meta-value {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text);
+  text-align: right;
+  word-break: break-all;
+  font-size: 11px;
+}
+
+.meta-value--copied {
+  color: var(--green);
+  font-family: inherit;
+}
+
 /* ── Load More ───────────────────────────────────────────────────── */
 .load-more-row {
   display: flex;

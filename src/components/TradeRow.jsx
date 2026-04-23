@@ -1,15 +1,267 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   convertOdds,
   formatStake,
   getBetOutcome,
   getLegResult,
+  getResult,
   calculateReturn,
   formatDateTime,
   formatMatchup,
 } from '../utils/tradeHelpers.js';
 
 const EXPLORER_BASE = 'https://explorerl2.sx.technology/tx/';
+
+function truncateHash(h) {
+  if (!h) return null;
+  return h.length > 20 ? `${h.slice(0, 10)}…${h.slice(-8)}` : h;
+}
+
+function field(id, label, value, display) {
+  const v = value != null ? String(value) : null;
+  return { id, label, value: v, display: display ?? v };
+}
+
+// ── Shared hover-state logic ──────────────────────────────────────────────────
+
+function useMetaHover() {
+  const [metaPos, setMetaPos] = useState(null);
+  const hideTimeout = useRef(null);
+  const iconRef = useRef(null);
+
+  const showMeta = useCallback(() => {
+    clearTimeout(hideTimeout.current);
+    if (iconRef.current) {
+      const r = iconRef.current.getBoundingClientRect();
+      const tooltipWidth = 300;
+      const left =
+        r.right + 8 + tooltipWidth > window.innerWidth
+          ? r.left - tooltipWidth - 8
+          : r.right + 8;
+      setMetaPos({ top: r.bottom + 6, left });
+    }
+  }, []);
+
+  const hideMeta = useCallback(() => {
+    hideTimeout.current = setTimeout(() => setMetaPos(null), 150);
+  }, []);
+
+  return { metaPos, iconRef, showMeta, hideMeta };
+}
+
+// ── Generic tooltip panel (portal) ───────────────────────────────────────────
+
+function TooltipPanel({ sections, pos, onMouseEnter, onMouseLeave }) {
+  const [copied, setCopied] = useState(null);
+
+  const copy = (id, value) => {
+    if (!value) return;
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(id);
+      setTimeout(() => setCopied(null), 1200);
+    });
+  };
+
+  return createPortal(
+    <div
+      className="trade-meta-tooltip"
+      style={{ top: pos.top, left: pos.left }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      {sections.map((section, si) => (
+        <div key={section.title}>
+          <div className={`meta-section${si === 0 ? ' meta-section--first' : ''}`}>
+            {section.title}
+          </div>
+          {section.fields.map((f) => {
+            const isCopied = copied === f.id;
+            const canCopy = !!f.value;
+            return (
+              <div
+                key={f.id}
+                className={`meta-row${canCopy ? ' meta-row--copyable' : ' meta-row--empty'}`}
+                onClick={() => copy(f.id, f.value)}
+              >
+                <span className="meta-label">{f.label}</span>
+                <span className={`meta-value${isCopied ? ' meta-value--copied' : ''}`}>
+                  {isCopied ? '✓ copied' : (f.display ?? '—')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>,
+    document.body
+  );
+}
+
+// ── Trade-level info button (renders as <td>) ─────────────────────────────────
+
+function TradeMetaButton({ trade }) {
+  const { metaPos, iconRef, showMeta, hideMeta } = useMetaHover();
+  const { market } = trade;
+  const ret = calculateReturn(trade, market);
+  const result = getResult(trade, market);
+  const retFormatted =
+    ret === null
+      ? null
+      : ret === 0
+      ? '$0.00'
+      : `${ret > 0 ? '+' : ''}$${Math.abs(ret).toFixed(2)}`;
+
+  const sections = [
+    {
+      title: 'Identifiers',
+      fields: [
+        field('fillHash',      'Trade Hash',      trade.fillHash,      truncateHash(trade.fillHash)),
+        field('fillOrderHash', 'Fill Order Hash', trade.fillOrderHash, truncateHash(trade.fillOrderHash)),
+        field('marketHash',    'Market Hash',     trade.marketHash,    truncateHash(trade.marketHash)),
+        field('settleTxHash',  'Settle Tx Hash',  trade.settleTxHash,  truncateHash(trade.settleTxHash)),
+      ],
+    },
+    {
+      title: 'Trade',
+      fields: [
+        field('betTime',           'Bet Time',         formatDateTime(trade.betTime)),
+        field('betTimeRaw',        'Bet Time (unix)',   trade.betTime),
+        field('stake',             'Stake',             trade.stake != null ? `$${formatStake(trade.stake)} USDC` : null),
+        field('stakeRaw',          'Stake (raw)',       trade.stake),
+        field('odds',              'Odds',              convertOdds(trade.odds) !== '—' ? convertOdds(trade.odds) : null),
+        field('oddsRaw',           'Odds (raw)',        trade.odds),
+        field('side',              'Side',              getBetOutcome(trade, market)),
+        field('bettingOutcomeOne', 'bettingOutcomeOne', trade.bettingOutcomeOne != null ? String(trade.bettingOutcomeOne) : null),
+        field('role',              'Role',              trade.maker ? 'Maker' : 'Taker'),
+        field('settled',           'Settled',           String(trade.settled)),
+        field('outcomeRaw',        'Outcome (raw)',     trade.outcome != null ? String(trade.outcome) : 'null'),
+        field('result',            'Result',            result !== '—' ? result : null),
+        field('return',            'Return',            retFormatted),
+      ],
+    },
+    {
+      title: 'Market',
+      fields: [
+        field('league',     'League',    market?.leagueLabel    || null),
+        field('teamOne',    'Team 1',    market?.teamOneName    || null),
+        field('teamTwo',    'Team 2',    market?.teamTwoName    || null),
+        field('outcomeOne', 'Outcome 1', market?.outcomeOneName || null),
+        field('outcomeTwo', 'Outcome 2', market?.outcomeTwoName || null),
+      ],
+    },
+  ];
+
+  return (
+    <td className="td-info">
+      <button
+        ref={iconRef}
+        className="info-btn"
+        onMouseEnter={showMeta}
+        onMouseLeave={hideMeta}
+        aria-label="Trade metadata"
+      >
+        ⓘ
+      </button>
+      {metaPos && (
+        <TooltipPanel
+          sections={sections}
+          pos={metaPos}
+          onMouseEnter={showMeta}
+          onMouseLeave={hideMeta}
+        />
+      )}
+    </td>
+  );
+}
+
+// ── Per-leg info button ───────────────────────────────────────────────────────
+
+function LegInfoButton({ market: m }) {
+  const { metaPos, iconRef, showMeta, hideMeta } = useMetaHover();
+
+  if (!m) return null;
+
+  const sections = [
+    {
+      title: 'Identifiers',
+      fields: [
+        field('marketHash',    'Market Hash', m.marketHash,    truncateHash(m.marketHash)),
+        field('sportXeventId', 'Event ID',    m.sportXeventId),
+      ],
+    },
+    {
+      title: 'Sport & League',
+      fields: [
+        field('sportLabel', 'Sport',     m.sportLabel),
+        field('sportId',    'Sport ID',  m.sportId),
+        field('leagueLabel','League',    m.leagueLabel),
+        field('leagueId',   'League ID', m.leagueId),
+      ],
+    },
+    {
+      title: 'Market',
+      fields: [
+        field('type',        'Market Type',      m.type),
+        field('line',        'Line',             m.line != null ? String(m.line) : null),
+        field('gameTime',    'Game Time',        formatDateTime(m.gameTime)),
+        field('gameTimeRaw', 'Game Time (unix)', m.gameTime),
+        field('status',      'Status',           m.status),
+        field('liveEnabled', 'Live Enabled',     m.liveEnabled != null ? String(m.liveEnabled) : null),
+        field('mainLine',    'Main Line',        m.mainLine    != null ? String(m.mainLine)    : null),
+        field('chainVersion','Chain Version',    m.chainVersion),
+      ],
+    },
+    {
+      title: 'Participants',
+      fields: [
+        field('teamOne',          'Team 1',    m.teamOneName),
+        field('participantOneId', 'Team 1 ID', m.participantOneId),
+        field('teamTwo',          'Team 2',    m.teamTwoName),
+        field('participantTwoId', 'Team 2 ID', m.participantTwoId),
+      ],
+    },
+    {
+      title: 'Outcomes',
+      fields: [
+        field('outcomeOne',  'Outcome 1',    m.outcomeOneName),
+        field('outcomeTwo',  'Outcome 2',    m.outcomeTwoName),
+        field('outcomeVoid', 'Outcome Void', m.outcomeVoidName),
+      ],
+    },
+    {
+      title: 'Display',
+      fields: [
+        field('group1', 'Group 1', m.group1),
+        field('group2', 'Group 2', m.group2),
+      ],
+    },
+  ];
+
+  return (
+    <>
+      <button
+        ref={iconRef}
+        className="info-btn info-btn--leg"
+        onMouseEnter={showMeta}
+        onMouseLeave={hideMeta}
+        aria-label="Leg market metadata"
+      >
+        ⓘ
+      </button>
+      {metaPos && (
+        <TooltipPanel
+          sections={sections}
+          pos={metaPos}
+          onMouseEnter={showMeta}
+          onMouseLeave={hideMeta}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function LegResultIcon({ result }) {
   if (result === 'WIN')  return <span className="leg-icon leg-icon--win">✓</span>;
@@ -41,6 +293,7 @@ function ParlayLegs({ legs }) {
               <span className="parlay-leg-match">{matchup}</span>
               <span className="parlay-leg-pick">{outcome}</span>
             </div>
+            <LegInfoButton market={m} />
           </div>
         );
       })}
@@ -68,6 +321,8 @@ function ReturnCell({ value, txLink }) {
   return inner;
 }
 
+// ── TradeRow ──────────────────────────────────────────────────────────────────
+
 export default function TradeRow({ trade }) {
   const [parlayExpanded, setParlayExpanded] = useState(false);
   const { market, parlayLegs } = trade;
@@ -81,8 +336,6 @@ export default function TradeRow({ trade }) {
     ? `${EXPLORER_BASE}${trade.fillOrderHash}`
     : null;
 
-  // Log raw trade on first render to aid debugging outcome field type
-  // (remove once win/loss is confirmed correct)
   if (process.env.NODE_ENV !== 'production' && trade.settled) {
     console.log('[trade-scanner] settled trade sample:', {
       outcome: trade.outcome,
@@ -94,6 +347,8 @@ export default function TradeRow({ trade }) {
 
   return (
     <tr className={isParlay ? 'row-parlay' : ''}>
+      <TradeMetaButton trade={trade} />
+
       {/* Maker / Taker badge */}
       <td className="td-role">
         <span className={`role-badge ${trade.maker ? 'role-badge--maker' : 'role-badge--taker'}`}>
@@ -101,7 +356,7 @@ export default function TradeRow({ trade }) {
         </span>
       </td>
 
-      {/* Bet Time (plain — tx links are on stake/return cells) */}
+      {/* Bet Time */}
       <td className="td-mono">{formatDateTime(trade.betTime)}</td>
 
       {/* League */}
@@ -138,7 +393,7 @@ export default function TradeRow({ trade }) {
       {/* Odds */}
       <td className="td-right td-mono">{convertOdds(trade.odds)}</td>
 
-      {/* Stake — linked to fill tx */}
+      {/* Stake */}
       <td className="td-right td-mono">
         {fillTxLink ? (
           <a href={fillTxLink} target="_blank" rel="noreferrer" className="tx-link tx-link--subtle">
@@ -150,7 +405,7 @@ export default function TradeRow({ trade }) {
         )}
       </td>
 
-      {/* Return — linked to settle tx */}
+      {/* Return */}
       <td className="td-right td-mono">
         <ReturnCell value={ret} txLink={settleTxLink} />
       </td>
