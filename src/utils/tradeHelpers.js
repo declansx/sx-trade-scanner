@@ -46,15 +46,36 @@ export function getLegResult(leg) {
   return (leg.bettingOutcomeOne === (raw === 'outcomeOne')) ? 'WIN' : 'LOSS';
 }
 
-// Net return in USDC.
+// Net return (profit/loss) in USDC, relative to the bettor's stake.
 //   unsettled/pending → null  (shows "—")
+//
+// Preferred path: SX's `netReturn` field is the authoritative gross amount returned
+// to the bettor — stake + winnings when held to settlement, or the proceeds of a
+// cash-out / capital-efficiency refund when the position was (partly) closed before
+// settlement. Net P&L is therefore `netReturn - stake`.
+//
+// This matters because of capital efficiency: SX releases collateral early when a
+// bettor's worst-case loss in a market group drops (CE refunds), and positions can be
+// cashed out before the game settles. In both cases the bettor's realized return is
+// NOT `±stake at full odds` — reconstructing from stake × odds would report a full win
+// or a full loss for a position that actually returned something else entirely.
+//
+// Fallback (legacy trades without `netReturn`, e.g. older SXN-chain trades):
 //   push              → 0     (shows "$0.00")
 //   loss              → -stake
 //   win               → (stake / impliedOdds) - stake
 //   parlay with push leg → 0  (voided)
 export function calculateReturn(trade, market) {
   if (!trade.settled) return null;
-  const stakeNorm  = Number(trade.stake) / 1e6;
+  const stakeNorm = Number(trade.stake) / 1e6;
+
+  // `netReturn` is a string-encoded decimal token amount; "0" is a valid value
+  // (a clean loss), so guard on presence rather than truthiness.
+  if (trade.netReturn != null && trade.netReturn !== '') {
+    return Number(trade.netReturn) - stakeNorm;
+  }
+
+  // ── Fallback: reconstruct from stake × odds (no refund/cash-out awareness) ──
   const impliedOdds = Number(trade.odds) / 1e20; // probability 0–1
   const result = getResult(trade, market);
 
