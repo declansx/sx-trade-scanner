@@ -1,42 +1,42 @@
 import { useState } from 'react';
 
-function defaultStartDate() {
-  const d = new Date();
-  d.setDate(d.getDate() - 30);
-  return d.toISOString().split('T')[0];
-}
+// Server-side sort fields the consolidated endpoint supports that map cleanly to a
+// market-group aggregate (value = API `sortBy`).
+export const SORT_OPTIONS = [
+  { value: 'gameTime', label: 'Game time' },
+  { value: 'betTime', label: 'Bet time' },
+  { value: 'settleNetReturnValue', label: 'Profit' },
+  { value: 'totalStake', label: 'Risk' },
+  { value: 'weightedAverageOdds', label: 'Odds' },
+];
 
 export default function SearchForm({ onSearch, loading, leagues = [], games = [], leagueFilter = '', gameFilter = '', onLeagueChange, onGameChange }) {
   const [walletAddress, setWalletAddress] = useState('');
   const [settled, setSettled] = useState('all');
   const [pageSize, setPageSize] = useState(300);
   const [baseToken, setBaseToken] = useState('');
-  const [startDate, setStartDate] = useState(defaultStartDate);
-  const [endDate, setEndDate] = useState('');
   const [maker, setMaker] = useState('all');
   const [tradeStatus, setTradeStatus] = useState('all');
+  const [marketHash, setMarketHash] = useState('');
+  const [eventId, setEventId] = useState('');
+  const [sortBy, setSortBy] = useState('gameTime');
+  const [sortAsc, setSortAsc] = useState(false);
 
   function handleSubmit(e) {
     e.preventDefault();
     const addr = walletAddress.trim();
     if (!addr) return;
 
-    // Convert date strings to unix timestamps (seconds), capped at now to avoid future-date rejections
-    const now = Math.floor(Date.now() / 1000);
-    const startTs = startDate ? Math.min(Math.floor(new Date(startDate).getTime() / 1000), now) : null;
-    // End date: use end of selected day in UTC (matching how date-only strings are parsed)
-    const endTs = endDate
-      ? Math.min(Math.floor(new Date(endDate + 'T23:59:59Z').getTime() / 1000), now)
-      : null;
-
     onSearch(addr, {
       settled,
       pageSize,
       baseToken,
-      startDate: startTs,
-      endDate: endTs,
       maker,
       tradeStatus: tradeStatus === 'all' ? null : tradeStatus,
+      marketHash: marketHash.trim() || null,
+      sportXeventId: eventId.trim() || null,
+      sort: sortBy,
+      sortAsc,
     });
   }
 
@@ -94,30 +94,8 @@ export default function SearchForm({ onSearch, loading, leagues = [], games = []
         </div>
       </div>
 
-      {/* Row 2: date range + maker + trade status */}
+      {/* Row 2: maker + trade status */}
       <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="startDate">
-            Start Date <span className="label-hint">(default: last 30d)</span>
-          </label>
-          <input
-            id="startDate"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="endDate">End Date</label>
-          <input
-            id="endDate"
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-          />
-        </div>
-
         <div className="form-group">
           <label htmlFor="maker">Role</label>
           <select id="maker" value={maker} onChange={(e) => setMaker(e.target.value)}>
@@ -138,6 +116,51 @@ export default function SearchForm({ onSearch, loading, leagues = [], games = []
             <option value="SUCCESS">Success</option>
             <option value="FAILED">Failed</option>
           </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="sortBy">Sort By</label>
+          <select id="sortBy" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="sortAsc">Order</label>
+          <select id="sortAsc" value={sortAsc ? 'asc' : 'desc'} onChange={(e) => setSortAsc(e.target.value === 'asc')}>
+            <option value="desc">High → Low</option>
+            <option value="asc">Low → High</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Row 3: server-side scoping — one game (event id) or one market (hash) */}
+      <div className="form-row">
+        <div className="form-group form-group--wide">
+          <label htmlFor="eventId">
+            Event ID <span className="label-hint">(optional · whole game)</span>
+          </label>
+          <input
+            id="eventId"
+            type="text"
+            value={eventId}
+            onChange={(e) => setEventId(e.target.value)}
+            placeholder="e.g. L18468509"
+            spellCheck={false}
+          />
+        </div>
+        <div className="form-group form-group--wide">
+          <label htmlFor="marketHash">
+            Market Hash <span className="label-hint">(optional · single market)</span>
+          </label>
+          <input
+            id="marketHash"
+            type="text"
+            value={marketHash}
+            onChange={(e) => setMarketHash(e.target.value)}
+            placeholder="0x… market hash"
+            spellCheck={false}
+          />
         </div>
       </div>
 

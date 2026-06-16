@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  convertOdds,
   formatStake,
   getBetOutcome,
   getLegResult,
@@ -10,6 +9,7 @@ import {
   formatDateTime,
   formatMatchup,
 } from '../utils/tradeHelpers.js';
+import { useFormatOdds } from '../OddsFormatContext.jsx';
 
 const EXPLORER_BASE = 'https://explorerl2.sx.technology/tx/';
 
@@ -102,6 +102,7 @@ function TooltipPanel({ sections, pos, onMouseEnter, onMouseLeave }) {
 
 function TradeMetaButton({ trade }) {
   const { metaPos, iconRef, showMeta, hideMeta } = useMetaHover();
+  const fmtOdds = useFormatOdds();
   const { market } = trade;
   const ret = calculateReturn(trade, market);
   const result = getResult(trade, market);
@@ -129,7 +130,7 @@ function TradeMetaButton({ trade }) {
         field('betTimeRaw',        'Bet Time (unix)',   trade.betTime),
         field('stake',             'Stake',             trade.stake != null ? `$${formatStake(trade.stake)} USDC` : null),
         field('stakeRaw',          'Stake (raw)',       trade.stake),
-        field('odds',              'Odds',              convertOdds(trade.odds) !== '—' ? convertOdds(trade.odds) : null),
+        field('odds',              'Odds',              fmtOdds(trade.odds) !== '—' ? fmtOdds(trade.odds) : null),
         field('oddsRaw',           'Odds (raw)',        trade.odds),
         field('side',              'Side',              getBetOutcome(trade, market)),
         field('bettingOutcomeOne', 'bettingOutcomeOne', trade.bettingOutcomeOne != null ? String(trade.bettingOutcomeOne) : null),
@@ -159,6 +160,7 @@ function TradeMetaButton({ trade }) {
         className="info-btn"
         onMouseEnter={showMeta}
         onMouseLeave={hideMeta}
+        onClick={(e) => e.stopPropagation()}
         aria-label="Trade metadata"
       >
         ⓘ
@@ -312,7 +314,7 @@ function ReturnCell({ value, txLink }) {
   );
   if (txLink) {
     return (
-      <a href={txLink} target="_blank" rel="noreferrer" className="tx-link">
+      <a href={txLink} target="_blank" rel="noreferrer" className="tx-link" onClick={(e) => e.stopPropagation()}>
         {inner}
         <span className="tx-icon">↗</span>
       </a>
@@ -321,13 +323,92 @@ function ReturnCell({ value, txLink }) {
   return inner;
 }
 
+// ── Expandable detail panel (quarter-line legs + refunds + P&L breakdown) ──────
+
+function LegResult({ leg }) {
+  const fmtOdds = useFormatOdds();
+  const ls = Number(leg.stake) / 1e6;
+  const result = getResult(leg);
+  const realized = leg.netReturn != null ? Number(leg.netReturn) - ls : null;
+  const realizedStr =
+    realized == null ? '—' : `${realized >= 0 ? '+' : '−'}$${Math.abs(realized).toFixed(2)}`;
+  return (
+    <tr>
+      <td className="detail-leg-label">
+        <LegResultIcon result={result} /> {leg.bettingOutcomeLabel ?? '—'}
+      </td>
+      <td className="td-right td-mono">${ls.toFixed(2)}</td>
+      <td className="td-right td-mono">{fmtOdds(leg.odds)}</td>
+      <td className={`td-right td-mono ${realized > 0 ? 'result-win' : realized < 0 ? 'result-loss' : ''}`}>
+        {realizedStr}
+      </td>
+    </tr>
+  );
+}
+
+function DetailPanel({ trade }) {
+  const legs = trade.quarterLegs ?? [];
+  const refunds = trade.refundEvents ?? [];
+  const stake = Number(trade.stake) / 1e6;
+  const settleNet = Number(trade.settleNetReturnValue ?? 0);
+  const refundTotal = Number(trade.ceRefund ?? 0);
+  const net = settleNet + refundTotal - stake;
+
+  return (
+    <div className="trade-detail">
+      {legs.length > 0 && (
+        <div className="detail-section">
+          <div className="detail-title">Quarter-line legs</div>
+          <table className="detail-legs">
+            <tbody>
+              {legs.map((leg, i) => <LegResult key={leg.fillOrderHash ?? i} leg={leg} />)}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {refunds.length > 0 && (
+        <div className="detail-section">
+          <div className="detail-title">Refunds</div>
+          {refunds.map((rf, i) => (
+            <div key={i} className="detail-line">
+              <span className="detail-line-label">
+                {rf.createdAt ? new Date(rf.createdAt).toLocaleDateString() : 'Capital-efficiency refund'}
+              </span>
+              <span className="td-mono result-win">+${Number(rf.amount).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="detail-section detail-pnl">
+        <div className="detail-title">Settled P&amp;L</div>
+        <div className="detail-line"><span className="detail-line-label">Stake</span><span className="td-mono">−${stake.toFixed(2)}</span></div>
+        <div className="detail-line"><span className="detail-line-label">Settled return</span><span className="td-mono">+${settleNet.toFixed(2)}</span></div>
+        <div className="detail-line"><span className="detail-line-label">Refunds</span><span className="td-mono">+${refundTotal.toFixed(2)}</span></div>
+        <div className="detail-line detail-net">
+          <span className="detail-line-label">Net</span>
+          <span className={`td-mono ${net > 0 ? 'result-win' : net < 0 ? 'result-loss' : ''}`}>
+            {net >= 0 ? '+' : '−'}${Math.abs(net).toFixed(2)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── TradeRow ──────────────────────────────────────────────────────────────────
 
 export default function TradeRow({ trade }) {
   const [parlayExpanded, setParlayExpanded] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const fmtOdds = useFormatOdds();
   const { market, parlayLegs } = trade;
   const isParlay = !!parlayLegs;
   const ret = calculateReturn(trade, market);
+
+  // Rows with quarter-line legs or refunds can expand to show the breakdown.
+  const hasDetail = (trade.quarterLegs?.length ?? 0) > 0 || (trade.refundEvents?.length ?? 0) > 0;
 
   const settleTxLink = trade.settled && trade.settleTxHash
     ? `${EXPLORER_BASE}${trade.settleTxHash}`
@@ -346,7 +427,11 @@ export default function TradeRow({ trade }) {
   }
 
   return (
-    <tr className={isParlay ? 'row-parlay' : ''}>
+    <>
+    <tr
+      className={`${isParlay ? 'row-parlay' : ''}${hasDetail ? ' row-expandable' : ''}${detailOpen ? ' row-expanded' : ''}`}
+      onClick={hasDetail ? () => setDetailOpen((v) => !v) : undefined}
+    >
       <TradeMetaButton trade={trade} />
 
       {/* Maker / Taker badge */}
@@ -369,7 +454,7 @@ export default function TradeRow({ trade }) {
         {isParlay ? (
           <button
             className="parlay-expand-btn"
-            onClick={() => setParlayExpanded((v) => !v)}
+            onClick={(e) => { e.stopPropagation(); setParlayExpanded((v) => !v); }}
           >
             <span className="parlay-chevron">{parlayExpanded ? '▾' : '▸'}</span>
             {parlayLegs.length} leg{parlayLegs.length !== 1 ? 's' : ''}
@@ -391,12 +476,12 @@ export default function TradeRow({ trade }) {
       </td>
 
       {/* Odds */}
-      <td className="td-right td-mono">{convertOdds(trade.odds)}</td>
+      <td className="td-right td-mono">{fmtOdds(trade.odds)}</td>
 
       {/* Stake */}
       <td className="td-right td-mono">
         {fillTxLink ? (
-          <a href={fillTxLink} target="_blank" rel="noreferrer" className="tx-link tx-link--subtle">
+          <a href={fillTxLink} target="_blank" rel="noreferrer" className="tx-link tx-link--subtle" onClick={(e) => e.stopPropagation()}>
             ${formatStake(trade.stake)}
             <span className="tx-icon">↗</span>
           </a>
@@ -407,8 +492,17 @@ export default function TradeRow({ trade }) {
 
       {/* Return */}
       <td className="td-right td-mono">
+        {hasDetail && <span className="detail-chevron">{detailOpen ? '▾' : '▸'}</span>}
         <ReturnCell value={ret} txLink={settleTxLink} />
       </td>
     </tr>
+    {hasDetail && detailOpen && (
+      <tr className="detail-row">
+        <td colSpan={9}>
+          <DetailPanel trade={trade} />
+        </td>
+      </tr>
+    )}
+    </>
   );
 }

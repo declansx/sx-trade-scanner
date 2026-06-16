@@ -1,7 +1,38 @@
+// Supported odds display formats, in toggle order. Labels are shown in the global toggle.
+export const ODDS_FORMATS = ['implied', 'decimal', 'american'];
+export const ODDS_FORMAT_LABELS = {
+  implied: 'Implied',
+  decimal: 'Decimal',
+  american: 'American',
+};
+
 // Odds are stored as fixed-point integers; divide by 10^20 to get implied probability (0–1).
-export function convertOdds(raw) {
+// `format` selects the display representation of that same probability:
+//   implied  → probability as a 0–1 decimal (e.g. 0.5000)
+//   decimal  → decimal odds (e.g. 2.00)
+//   american → moneyline odds (e.g. +100 / −110)
+export function convertOdds(raw, format = 'implied') {
   if (!raw) return '—';
-  return (Number(raw) / 1e20).toFixed(4);
+  const implied = Number(raw) / 1e20;
+  if (!(implied > 0)) return '—';
+
+  switch (format) {
+    case 'decimal':
+      return (1 / implied).toFixed(2);
+    case 'american': {
+      // implied ≥ 1 is a (near-)certain outcome with no meaningful moneyline.
+      if (implied >= 1) return '—';
+      const decimal = 1 / implied;
+      const american =
+        decimal >= 2
+          ? Math.round((decimal - 1) * 100)
+          : Math.round(-100 / (decimal - 1));
+      return `${american > 0 ? '+' : '−'}${Math.abs(american)}`;
+    }
+    case 'implied':
+    default:
+      return implied.toFixed(4);
+  }
 }
 
 // Stake is in raw token units. USDC on Polygon uses 6 decimals.
@@ -46,26 +77,19 @@ export function getLegResult(leg) {
   return (leg.bettingOutcomeOne === (raw === 'outcomeOne')) ? 'WIN' : 'LOSS';
 }
 
-// Net return in USDC.
+// Realized P&L (profit/loss) in USDC, relative to the bettor's stake.
 //   unsettled/pending → null  (shows "—")
-//   push              → 0     (shows "$0.00")
-//   loss              → -stake
-//   win               → (stake / impliedOdds) - stake
-//   parlay with push leg → 0  (voided)
-export function calculateReturn(trade, market) {
+//
+// Matches SX Bet's own portfolio (sx-backend ce_profit_loss_events.ts):
+//   profit = settleNetReturnValue + refunds − stake  (= totalReturned − totalRisked).
+// SX uses net_return only for best-case/maxWin display, not realized P&L. Refunds
+// (capital efficiency) are attached as `trade.ceRefund` from /trades/portfolio/refunds.
+export function calculateReturn(trade) {
   if (!trade.settled) return null;
-  const stakeNorm  = Number(trade.stake) / 1e6;
-  const impliedOdds = Number(trade.odds) / 1e20; // probability 0–1
-  const result = getResult(trade, market);
-
-  if (result === 'PUSH') return 0;
-  if (result === 'LOSS') return -stakeNorm;
-  if (result === 'WIN') {
-    // A push on any parlay leg voids the whole parlay
-    if (trade.parlayLegs?.some((leg) => getLegResult(leg) === 'PUSH')) return 0;
-    return (stakeNorm / impliedOdds) - stakeNorm;
-  }
-  return null; // Pending
+  const stakeNorm = Number(trade.stake) / 1e6;
+  const settleNet = Number(trade.settleNetReturnValue ?? 0);
+  const refund = Number(trade.ceRefund ?? 0);
+  return settleNet + refund - stakeNorm;
 }
 
 export function formatDateTime(unixTimestamp) {
