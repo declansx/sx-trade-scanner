@@ -1,27 +1,25 @@
-import TradeRow from './TradeRow.jsx';
+import MarketRow from './MarketRow.jsx';
 
-export default function TradesTable({ trades }) {
-  if (!trades.length) return null;
+export default function TradesTable({ groups, bettor }) {
+  if (!groups.length) return null;
 
   return (
     <div className="table-wrapper">
-      <table className="trades-table">
+      <table className="trades-table market-table">
         <thead>
           <tr>
-            <th className="th-info"></th>
-            <th className="th-role"></th>
-            <th>Bet Time</th>
-            <th>League</th>
-            <th>Match</th>
-            <th>Bet On</th>
+            <th>Game Time</th>
+            <th>Game</th>
+            <th>Best Case</th>
+            <th>Score</th>
+            <th className="td-right">Risk</th>
             <th className="td-right">Odds</th>
-            <th className="td-right">Stake</th>
-            <th className="td-right">Return</th>
+            <th className="td-right">Profit</th>
           </tr>
         </thead>
         <tbody>
-          {trades.map((trade) => (
-            <TradeRow key={trade.fillHash} trade={trade} />
+          {groups.map((group) => (
+            <MarketRow key={group.marketHash} group={group} bettor={bettor} />
           ))}
         </tbody>
       </table>
