@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { formatDateTime } from '../utils/tradeHelpers.js';
+import { formatDateTime, getLegResult } from '../utils/tradeHelpers.js';
 import { useFormatOdds } from '../OddsFormatContext.jsx';
 import { fetchMarketSettleTxs } from '../api/fetchTrades.js';
 import { InfoButton, field, truncateHash } from './MetaTooltip.jsx';
@@ -85,6 +85,49 @@ function refundSections(r, market) {
       ],
     },
   ];
+}
+
+// Metadata sections for a single parlay leg's market (shown in the ⓘ hover tooltip).
+function legSections(m) {
+  return [
+    {
+      title: 'Market',
+      fields: [
+        field('marketHash', 'Market Hash', m.marketHash, truncateHash(m.marketHash)),
+        field('sport', 'Sport', m.sportLabel || null),
+        field('league', 'League', m.leagueLabel || null),
+        field('type', 'Market Type', m.type || null),
+        field('line', 'Line', m.line != null ? String(m.line) : null),
+        field('gameTime', 'Game Time', m.gameTime ? formatDateTime(m.gameTime) : null),
+        field('status', 'Status', m.status || null),
+        field('eventId', 'Event ID', m.sportXeventId || null),
+      ],
+    },
+    {
+      title: 'Outcomes',
+      fields: [
+        field('teamOne', 'Team 1', m.teamOneName || null),
+        field('teamTwo', 'Team 2', m.teamTwoName || null),
+        field('outcomeOne', 'Outcome 1', m.outcomeOneName || null),
+        field('outcomeTwo', 'Outcome 2', m.outcomeTwoName || null),
+        field(
+          'score',
+          'Score',
+          m.teamOneScore != null && m.teamTwoScore != null
+            ? `${m.teamOneScore}-${m.teamTwoScore}`
+            : null
+        ),
+      ],
+    },
+  ];
+}
+
+// ✓/✗/– result glyph for a single parlay leg (null result = unsettled).
+function LegResultIcon({ result }) {
+  if (result === 'WIN')  return <span className="leg-icon leg-icon--win">✓</span>;
+  if (result === 'LOSS') return <span className="leg-icon leg-icon--loss">✗</span>;
+  if (result === 'PUSH') return <span className="leg-icon leg-icon--push">–</span>;
+  return <span className="leg-icon leg-icon--pending">·</span>;
 }
 
 // Signed money string matching SX's convention: +$ for gains, plain $ (color conveys
@@ -191,6 +234,7 @@ export default function MarketRow({ group, bettor }) {
   const items = open ? buildLineItems(group) : [];
   const displayProfit = group.settled ? group.profit : null;
   const isParlay = !!group.market?.legs?.length;
+  const parlayLegs = isParlay ? (group.bets[0]?.parlayLegs ?? null) : null;
 
   return (
     <>
@@ -213,6 +257,48 @@ export default function MarketRow({ group, bettor }) {
       {open && (
         <tr className="detail-row">
           <td colSpan={7}>
+            {parlayLegs?.length > 0 && (
+              <div className="parlay-legs-detail">
+                <table className="line-items parlay-legs-table">
+                  <thead>
+                    <tr>
+                      <th className="th-info"></th>
+                      <th>Result</th>
+                      <th>Game</th>
+                      <th>Pick</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parlayLegs.map((leg, i) => {
+                      const m = leg.marketData;
+                      if (!m) {
+                        return (
+                          <tr key={i} className="li-row">
+                            <td className="td-info"></td>
+                            <td><LegResultIcon result={null} /></td>
+                            <td className="text-muted" colSpan={2}>Leg {i + 1}</td>
+                          </tr>
+                        );
+                      }
+                      const outcome = leg.bettingOutcomeOne != null
+                        ? (leg.bettingOutcomeOne ? m.outcomeOneName : m.outcomeTwoName)
+                        : '?';
+                      const matchup = m.teamOneName && m.teamTwoName
+                        ? `${m.teamOneName} vs ${m.teamTwoName}`
+                        : m.outcomeOneName ?? '?';
+                      return (
+                        <tr key={i} className="li-row">
+                          <td className="td-info"><InfoButton sections={legSections(m)} /></td>
+                          <td><LegResultIcon result={getLegResult(leg)} /></td>
+                          <td className="text-muted">{matchup}</td>
+                          <td className="parlay-leg-pick">{outcome}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <table className="line-items">
               <thead>
                 <tr>

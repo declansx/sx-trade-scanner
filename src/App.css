@@ -319,6 +319,16 @@ select option { background: var(--bg-3); }
   min-width: 220px;
 }
 
+/* Parlay legs shown as a full-width table inside an expanded market row, above the
+   bets/refunds table. A thicker bottom border separates it from that table. */
+.parlay-legs-detail {
+  border-bottom: 2px solid var(--border);
+}
+.parlay-legs-table .parlay-leg-pick {
+  color: var(--text);
+  font-weight: 500;
+}
+
 .parlay-leg {
   display: flex;
   flex-direction: row;
